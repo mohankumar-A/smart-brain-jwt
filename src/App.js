@@ -7,8 +7,11 @@ import Register from './components/Register/Register';
 import Logo from './components/Logo/Logo';
 import ImageLinkForm from './components/ImageLinkForm/ImageLinkForm';
 import Rank from './components/Rank/Rank';
+import Modal from "./components/Modal/Modal";
+import Profile from "./components/Profile/Profile";
+
 import './App.css';
- 
+
 const particlesOptions = {
   //customize this to your liking
   particles: {
@@ -28,12 +31,15 @@ const initialState = {
   box: {},
   route: 'signin',
   isSignedIn: false,
+  isProfileOpen: false,
   user: {
     id: '',
     name: '',
     email: '',
     entries: 0,
-    joined: ''
+    joined: '',
+    age: '',
+    pet: ''
   }
 }
 
@@ -41,6 +47,44 @@ class App extends Component {
   constructor() {
     super();
     this.state = initialState;
+  }
+
+  componentDidMount() {
+    const token = window.sessionStorage.getItem("token")
+    if (token) {
+      fetch("http://localhost:3000/signin", {
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token
+        }
+      })
+      .then(res => res.json())
+      .then((data) => {
+        if (data && data.id) {
+          this.onLoadUser(data.id);
+        }
+      })
+      .catch(err => console.log(err))
+    }
+  }
+
+  onLoadUser = (userId) => {
+    fetch(`http://localhost:3000/profile/${userId}`, {
+      method: "get",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": window.sessionStorage.getItem("token")
+      }
+    })
+      .then((res) => res.json())
+      .then(user => {
+        if(user && user.email) {
+          this.loadUser(user);
+          this.onRouteChange("home")
+        }
+      })
+      .catch(err => console.log(err))
   }
 
   loadUser = (data) => {
@@ -54,31 +98,46 @@ class App extends Component {
   }
 
   calculateFaceLocation = (data) => {
-    const clarifaiFace = data.outputs[0].data.regions[0].region_info.bounding_box;
-    const image = document.getElementById('inputimage');
-    const width = Number(image.width);
-    const height = Number(image.height);
-    return {
-      leftCol: clarifaiFace.left_col * width,
-      topRow: clarifaiFace.top_row * height,
-      rightCol: width - (clarifaiFace.right_col * width),
-      bottomRow: height - (clarifaiFace.bottom_row * height)
+    if (data && data.outputs) {
+      const clarifaiFace = data.outputs[0].data.regions[0].region_info.bounding_box;
+      const image = document.getElementById('inputimage');
+      const width = Number(image.width);
+      const height = Number(image.height);
+      return {
+        leftCol: clarifaiFace.left_col * width,
+        topRow: clarifaiFace.top_row * height,
+        rightCol: width - (clarifaiFace.right_col * width),
+        bottomRow: height - (clarifaiFace.bottom_row * height)
+      }
     }
+    return;
   }
 
   displayFaceBox = (box) => {
-    this.setState({box: box});
+    if (box) {
+      this.setState({box: box});
+    }
   }
 
   onInputChange = (event) => {
     this.setState({input: event.target.value});
   }
 
+  toggleProfile = () => {
+    this.setState((prevState) => ({
+      ...prevState,
+      isProfileOpen: !prevState.isProfileOpen
+    }))
+  }
+
   onButtonSubmit = () => {
     this.setState({imageUrl: this.state.input});
       fetch('http://localhost:3000/imageurl', {
         method: 'post',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          "Authorization": window.sessionStorage.getItem("token")
+        },
         body: JSON.stringify({
           input: this.state.input
         })
@@ -88,7 +147,10 @@ class App extends Component {
         if (response) {
           fetch('http://localhost:3000/image', {
             method: 'put',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              "Authorization": window.sessionStorage.getItem("token")
+            },
             body: JSON.stringify({
               id: this.state.user.id
             })
@@ -107,7 +169,8 @@ class App extends Component {
 
   onRouteChange = (route) => {
     if (route === 'signout') {
-      this.setState(initialState)
+      window.sessionStorage.removeItem("token")
+      return this.setState(initialState)
     } else if (route === 'home') {
       this.setState({isSignedIn: true})
     }
@@ -115,13 +178,22 @@ class App extends Component {
   }
 
   render() {
-    const { isSignedIn, imageUrl, route, box } = this.state;
+    const { isSignedIn, imageUrl, route, box, isProfileOpen, user } = this.state;
     return (
       <div className="App">
          <Particles className='particles'
           params={particlesOptions}
         />
-        <Navigation isSignedIn={isSignedIn} onRouteChange={this.onRouteChange} />
+        <Navigation isSignedIn={isSignedIn}
+          onRouteChange={this.onRouteChange}
+          toggleProfile={this.toggleProfile}
+        />
+        {
+          isProfileOpen &&
+          <Modal>
+            <Profile isProfileOpen={isProfileOpen} toggleProfile={this.toggleProfile} loadUser={this.loadUser} user={user} />
+          </Modal>
+        }
         { route === 'home'
           ? <div>
               <Logo />
